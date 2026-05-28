@@ -48,6 +48,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Spawn gate frames without yaw rotation while keeping referee yaw unchanged.",
     )
+    parser.add_argument(
+        "--invert-yaw",
+        action="store_true",
+        help="Invert yaw thruster contribution for testing BlueROV yaw sign.",
+    )
     return parser.parse_args()
 
 
@@ -62,6 +67,7 @@ def main() -> int:
             ticks_per_sec=args.ticks_per_sec,
             post_finish_duration_s=args.post_finish_duration,
             axis_aligned_visual_gates=args.axis_aligned_visual_gates,
+            yaw_sign=-1.0 if args.invert_yaw else 1.0,
         )
     )
 

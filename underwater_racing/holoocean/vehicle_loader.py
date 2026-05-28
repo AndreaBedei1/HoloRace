@@ -64,6 +64,7 @@ class BlueROVThrusterAdapter:
     sway_thrust: float = 8.0
     heave_thrust: float = 8.0
     yaw_thrust: float = 3.0
+    yaw_sign: float = 1.0
 
     def to_action(self, command: RoverCommand) -> List[float]:
         cmd = [0.0] * 8
@@ -80,7 +81,7 @@ class BlueROVThrusterAdapter:
         cmd[6] += sway
         cmd[7] -= sway
 
-        yaw = command.yaw * self.yaw_thrust
+        yaw = command.yaw * self.yaw_sign * self.yaw_thrust
         cmd[4] -= yaw
         cmd[5] += yaw
         cmd[6] += yaw

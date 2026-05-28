@@ -29,12 +29,15 @@ class SimpleGateFollower:
     heave_gain: float = 0.45
     yaw_gain: float = 1.1
     slow_radius_m: float = 0.8
+    min_turning_surge: float = 0.15
 
     def compute_command(self, measurement: BeaconMeasurement) -> RoverCommand:
         alignment = max(0.0, math.cos(measurement.bearing_error_rad))
         surge = self.surge_gain * measurement.distance_m * alignment
         if measurement.distance_m < self.slow_radius_m:
             surge *= measurement.distance_m / self.slow_radius_m
+        if abs(measurement.bearing_error_deg) < 90.0 and surge < self.min_turning_surge:
+            surge = self.min_turning_surge
 
         yaw = self.yaw_gain * measurement.bearing_error_rad
         heave = self.heave_gain * measurement.vertical_error_m

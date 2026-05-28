@@ -15,6 +15,7 @@ class RaceLogger:
         "x",
         "y",
         "z",
+        "yaw_deg",
         "onboard_active_gate_id",
         "referee_active_gate_id",
         "distance_to_gate",

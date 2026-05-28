@@ -38,6 +38,7 @@ class TrackDemoConfig:
     output_root: str | Path | None = None
     post_finish_duration_s: float = 4.0
     axis_aligned_visual_gates: bool = False
+    yaw_sign: float = 1.0
 
 
 def run_track_demo(config: TrackDemoConfig) -> int:
@@ -67,7 +68,7 @@ def run_track_demo(config: TrackDemoConfig) -> int:
     )
 
     controller = SimpleGateFollower()
-    adapter = BlueROVThrusterAdapter()
+    adapter = BlueROVThrusterAdapter(yaw_sign=config.yaw_sign)
     beacons = {gate.id: VirtualGateBeacon(gate) for gate in track.gates}
     output_root = config.output_root or f"outputs/{config.track_name}_track_demo"
 
@@ -175,6 +176,7 @@ def run_track_demo(config: TrackDemoConfig) -> int:
                     logger=logger,
                     time_s=elapsed_time,
                     position=position,
+                    yaw_deg=yaw_deg,
                     onboard_gate_id=onboard_selector.active_gate_id,
                     referee_gate_id=referee_state.active_gate_id,
                     measurement=measurement,
@@ -213,6 +215,7 @@ def run_track_demo(config: TrackDemoConfig) -> int:
             "elapsed_time": elapsed_time,
             "collision_count": collision_count,
             "selected_world": selected_world,
+            "yaw_sign": config.yaw_sign,
             "rover_config_source": ROVER_CONFIG_SOURCE,
         }
         logger.write_summary(summary)
@@ -285,6 +288,7 @@ def _log_trajectory(
     logger: RaceLogger,
     time_s: float,
     position: list[float],
+    yaw_deg: float,
     onboard_gate_id: int | None,
     referee_gate_id: int | None,
     measurement: BeaconMeasurement | None,
@@ -295,6 +299,7 @@ def _log_trajectory(
         x=f"{position[0]:.4f}",
         y=f"{position[1]:.4f}",
         z=f"{position[2]:.4f}",
+        yaw_deg=f"{yaw_deg:.4f}",
         onboard_active_gate_id=_format_optional(onboard_gate_id),
         referee_active_gate_id=_format_optional(referee_gate_id),
         distance_to_gate="" if measurement is None else f"{measurement.distance_m:.4f}",

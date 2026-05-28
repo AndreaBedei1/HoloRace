@@ -1,0 +1,6 @@
+time,event,gate_id,details
+2.833,onboard_gate_reached,1,reason=close_threshold
+3.533,referee_gate_passed,1,
+4.367,onboard_switch,1,"to_gate_id=2, reason=range_increased_after_reach"
+9.633,onboard_gate_reached,2,reason=close_threshold
+10.300,referee_gate_passed,2,
