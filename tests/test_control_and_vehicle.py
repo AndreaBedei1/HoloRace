@@ -33,18 +33,37 @@ class ControlAndVehicleTests(unittest.TestCase):
 
     def test_minimum_turning_surge_for_moderate_bearing_error(self):
         follower = SimpleGateFollower(min_turning_surge=0.15)
-        command = follower.compute_command(measurement(distance_m=0.2, bearing_error_deg=60.0))
+        command = follower.compute_command(measurement(distance_m=0.5, bearing_error_deg=60.0))
 
         self.assertAlmostEqual(command.surge, 0.15)
         self.assertGreater(command.yaw, 0.0)
 
     def test_no_minimum_turning_surge_when_target_is_behind(self):
         follower = SimpleGateFollower(min_turning_surge=0.15)
-        command = follower.compute_command(measurement(distance_m=0.2, bearing_error_deg=120.0))
+        command = follower.compute_command(measurement(distance_m=0.5, bearing_error_deg=120.0))
 
         self.assertAlmostEqual(command.surge, 0.0)
+
+    def test_yaw_command_is_rate_limited_and_less_aggressive(self):
+        follower = SimpleGateFollower()
+        command = follower.compute_command(measurement(distance_m=2.0, bearing_error_deg=90.0))
+
+        self.assertAlmostEqual(command.yaw, follower.max_yaw_delta_per_step)
+        self.assertLess(command.yaw, 0.35)
+
+    def test_yaw_is_suppressed_near_target(self):
+        follower = SimpleGateFollower()
+        command = follower.compute_command(measurement(distance_m=0.04, bearing_error_deg=170.0))
+
+        self.assertAlmostEqual(command.yaw, 0.0)
+
+    def test_no_spin_when_distance_is_near_zero(self):
+        follower = SimpleGateFollower()
+        follower.compute_command(measurement(distance_m=2.0, bearing_error_deg=90.0))
+        command = follower.compute_command(measurement(distance_m=0.01, bearing_error_deg=-170.0))
+
+        self.assertAlmostEqual(command.yaw, 0.0)
 
 
 if __name__ == "__main__":
     unittest.main()
-

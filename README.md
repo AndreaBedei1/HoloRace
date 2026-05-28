@@ -40,6 +40,7 @@ The generic track runner supports the single-gate, straight-line, and zigzag lay
 python scripts/run_track_demo.py --track single --headless
 python scripts/run_track_demo.py --track straight --headless
 python scripts/run_track_demo.py --track zigzag --headless
+python scripts/run_track_demo.py --track zigzag_smooth --headless
 ```
 
 Useful options:
@@ -47,6 +48,7 @@ Useful options:
 ```bash
 python scripts/run_track_demo.py --track straight --world OpenWater
 python scripts/run_track_demo.py --track zigzag --max-duration 60
+python scripts/run_track_demo.py --track zigzag_smooth --max-duration 120 --invert-yaw
 python scripts/run_track_demo.py --track single --ticks-per-sec 30
 python scripts/run_track_demo.py --track zigzag --post-finish-duration 4
 python scripts/run_track_demo.py --track zigzag --axis-aligned-visual-gates
@@ -97,15 +99,15 @@ The virtual beacon is a sensor emulator for the demo. The rover's onboard missio
 
 The rover has two separate state machines:
 
-- `OnboardGateSelector` is the rover's internal mission state. It decides which gate/beacon to follow using only recent `BeaconMeasurement` values. It switches after the expected gate has been close, aligned, and vertically centered for a configurable number of consecutive ticks.
+- `OnboardCorridorNavigator` is the rover's internal mission state. It follows each gate's approach and exit corridor using only `BeaconMeasurement` values for onboard target points.
 - `RaceState` is the referee state. It uses parsed HoloOcean pose with `CrossingDetector` to score true geometric gate crossings through the active gate opening.
 
-PoseSensor / simulator ground truth is used only for referee scoring, crossing detection, logging, debugging, and the final summary. It does not choose the controller target. The controller follows the gate selected by `OnboardGateSelector`, and the referee independently records whether that choice actually produced valid crossings.
+PoseSensor / simulator ground truth is used only for referee scoring, crossing detection, logging, debugging, and the final summary. It does not choose the controller target. The controller follows the target selected by `OnboardCorridorNavigator`, and the referee independently records whether that choice actually produced valid crossings.
 
 The logs include both concepts:
 
-- `trajectory.csv`: position, onboard active gate, referee active gate, beacon guidance errors, and abstract command values
-- `race_events.csv`: `onboard_switch`, `referee_gate_passed`, `referee_gate_missed`, and `collision` events
+- `trajectory.csv`: position, yaw, onboard active gate, onboard phase, target point, referee active gate, beacon guidance errors, and abstract command values
+- `race_events.csv`: `onboard_phase_changed`, `onboard_switch`, `referee_gate_passed`, `referee_gate_missed`, and `collision` events
 - `summary.json`: selected track/world, onboard completion, referee completion, passed gate counts, finish time, post-finish clearance, elapsed time, and collisions
 
 For the first stable zigzag demo, visual gate boxes are spawned axis-aligned by default so each frame remains compact in HoloOcean. The referee still uses each gate's configured `yaw_deg` for crossing geometry.

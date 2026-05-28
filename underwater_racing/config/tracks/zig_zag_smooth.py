@@ -1,4 +1,4 @@
-"""Zigzag multi-gate track definition."""
+"""Wider zigzag track for controller tuning."""
 
 from underwater_racing.config.tracks.path_yaw import yaws_for_path
 from underwater_racing.racing.gate import RaceGate
@@ -8,10 +8,10 @@ from underwater_racing.racing.track import RaceTrack
 def build_track() -> RaceTrack:
     centers = [
         [0.0, 0.0, -5.0],
-        [6.0, 2.0, -5.0],
-        [12.0, -2.0, -5.0],
-        [18.0, 2.0, -5.0],
-        [24.0, 0.0, -5.0],
+        [8.0, 1.5, -5.0],
+        [16.0, -1.5, -5.0],
+        [24.0, 1.5, -5.0],
+        [32.0, 0.0, -5.0],
     ]
     return RaceTrack.from_gates(
         [

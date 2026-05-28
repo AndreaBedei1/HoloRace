@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from underwater_racing.config.tracks import single_gate, straight_line, zig_zag
+from underwater_racing.config.tracks import single_gate, straight_line, zig_zag, zig_zag_smooth
 from underwater_racing.racing.track import RaceTrack
 
 TrackBuilder = Callable[[], RaceTrack]
@@ -13,6 +13,7 @@ TRACK_BUILDERS: dict[str, TrackBuilder] = {
     "single": single_gate.build_track,
     "straight": straight_line.build_track,
     "zigzag": zig_zag.build_track,
+    "zigzag_smooth": zig_zag_smooth.build_track,
 }
 
 

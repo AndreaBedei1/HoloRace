@@ -21,8 +21,11 @@ from underwater_racing.holoocean.scenario_builder import build_scenario, choose_
 from underwater_racing.holoocean.state_parsing import has_collision, parse_vehicle_pose
 from underwater_racing.holoocean.vehicle_loader import BlueROVThrusterAdapter, build_bluerov_config
 from underwater_racing.logging_utils.race_logger import RaceLogger
-from underwater_racing.racing.beacon import BeaconMeasurement, VirtualGateBeacon
-from underwater_racing.racing.onboard_gate_selector import OnboardGateSelector, OnboardGateUpdate
+from underwater_racing.racing.beacon import BeaconMeasurement, GuidanceTarget, VirtualGuidanceProvider
+from underwater_racing.racing.onboard_corridor_navigator import (
+    OnboardCorridorNavigator,
+    OnboardNavigationUpdate,
+)
 from underwater_racing.racing.race_state import RaceState
 
 POST_FINISH_SURGE = 0.25
@@ -56,7 +59,7 @@ def run_track_demo(config: TrackDemoConfig) -> int:
 
     track = build_track(config.track_name)
     referee_state = RaceState(track)
-    onboard_selector = OnboardGateSelector(track)
+    onboard_navigator = OnboardCorridorNavigator(track)
     selected_world = choose_world(config.world)
     vehicle_config = build_bluerov_config()
     scenario_cfg = build_scenario(
@@ -69,7 +72,7 @@ def run_track_demo(config: TrackDemoConfig) -> int:
 
     controller = SimpleGateFollower()
     adapter = BlueROVThrusterAdapter(yaw_sign=config.yaw_sign)
-    beacons = {gate.id: VirtualGateBeacon(gate) for gate in track.gates}
+    guidance_provider = VirtualGuidanceProvider()
     output_root = config.output_root or f"outputs/{config.track_name}_track_demo"
 
     collision_count = 0
@@ -128,39 +131,53 @@ def run_track_demo(config: TrackDemoConfig) -> int:
                     time_s=elapsed_time,
                 )
 
-                measurement = _measure_onboard_target(onboard_selector, beacons, position, yaw_deg)
+                target = onboard_navigator.active_target
+                measurement = _measure_onboard_target(
+                    onboard_navigator,
+                    guidance_provider,
+                    position,
+                    yaw_deg,
+                )
                 if measurement is not None:
-                    switch = onboard_selector.update_from_measurement(measurement)
-                    if switch.gate_reached:
+                    update = onboard_navigator.update_from_measurement(measurement)
+                    if update.phase_changed:
                         logger.log_event(
                             elapsed_time,
-                            "onboard_gate_reached",
-                            switch.reached_gate_id,
-                            f"reason={switch.reason}",
+                            "onboard_phase_changed",
+                            update.completed_gate_id or onboard_navigator.active_gate_id,
+                            (
+                                f"from={update.from_phase}, to={update.to_phase}, "
+                                f"reason={update.reason}"
+                            ),
                         )
-                    if switch.switched:
-                        _log_onboard_switch(logger, elapsed_time, switch)
+                    if update.switched:
+                        _log_onboard_switch(logger, elapsed_time, update)
+                    if update.phase_changed or update.switched:
+                        target = onboard_navigator.active_target
                         measurement = _measure_onboard_target(
-                            onboard_selector,
-                            beacons,
+                            onboard_navigator,
+                            guidance_provider,
                             position,
                             yaw_deg,
                         )
 
-                if onboard_selector.is_finished and referee_state.is_finished and finish_time_s is None:
+                if onboard_navigator.is_finished and referee_state.is_finished and finish_time_s is None:
                     finish_time_s = elapsed_time
 
                 if finish_time_s is not None:
                     command = RoverCommand(surge=POST_FINISH_SURGE)
                     action = adapter.to_action(command)
-                elif measurement is None and onboard_selector.is_finished:
+                elif measurement is None and onboard_navigator.is_finished:
                     command = RoverCommand(surge=POST_FINISH_SURGE)
                     action = adapter.to_action(command)
                 elif measurement is None:
                     command = RoverCommand()
                     action = adapter.zero_action()
                 else:
-                    command = controller.compute_command(measurement)
+                    command = controller.compute_command(
+                        measurement,
+                        keep_forward_near_target=onboard_navigator.keep_forward_near_target,
+                    )
                     action = adapter.to_action(command)
 
                 if has_collision(state, agent_name=ROVER_NAME):
@@ -168,7 +185,7 @@ def run_track_demo(config: TrackDemoConfig) -> int:
                     logger.log_event(
                         elapsed_time,
                         "collision",
-                        onboard_selector.active_gate_id,
+                        onboard_navigator.active_gate_id,
                         f"referee_active_gate_id={_format_optional(referee_state.active_gate_id)}",
                     )
 
@@ -177,7 +194,9 @@ def run_track_demo(config: TrackDemoConfig) -> int:
                     time_s=elapsed_time,
                     position=position,
                     yaw_deg=yaw_deg,
-                    onboard_gate_id=onboard_selector.active_gate_id,
+                    onboard_gate_id=onboard_navigator.active_gate_id,
+                    onboard_phase=None if onboard_navigator.is_finished else onboard_navigator.phase,
+                    target=target,
                     referee_gate_id=referee_state.active_gate_id,
                     measurement=measurement,
                     command=command,
@@ -187,7 +206,7 @@ def run_track_demo(config: TrackDemoConfig) -> int:
                     _print_status(
                         elapsed_time=elapsed_time,
                         position=position,
-                        onboard_selector=onboard_selector,
+                        onboard_navigator=onboard_navigator,
                         referee_state=referee_state,
                         measurement=measurement,
                         collision_count=collision_count,
@@ -205,9 +224,9 @@ def run_track_demo(config: TrackDemoConfig) -> int:
         summary = {
             "track_name": config.track_name,
             "total_gates": len(track.gates),
-            "onboard_completed_gates": len(onboard_selector.completed_gate_ids),
+            "onboard_completed_gates": len(onboard_navigator.completed_gate_ids),
             "referee_passed_gates": len(referee_state.completed_gate_ids),
-            "race_finished_onboard": onboard_selector.is_finished,
+            "race_finished_onboard": onboard_navigator.is_finished,
             "race_finished_referee": referee_state.is_finished,
             "finish_time": finish_time_s,
             "post_finish_duration_s": config.post_finish_duration_s,
@@ -227,7 +246,7 @@ def run_track_demo(config: TrackDemoConfig) -> int:
 def _should_rotate_visual_boxes(config: TrackDemoConfig) -> bool:
     if config.axis_aligned_visual_gates:
         return False
-    return config.track_name.lower() != "zigzag"
+    return not config.track_name.lower().startswith("zigzag")
 
 
 def _update_referee(
@@ -260,21 +279,21 @@ def _update_referee(
 
 
 def _measure_onboard_target(
-    onboard_selector: OnboardGateSelector,
-    beacons: dict[int, VirtualGateBeacon],
+    onboard_navigator: OnboardCorridorNavigator,
+    guidance_provider: VirtualGuidanceProvider,
     position: list[float],
     yaw_deg: float,
 ) -> BeaconMeasurement | None:
-    gate = onboard_selector.active_gate
-    if gate is None:
+    target = onboard_navigator.active_target
+    if target is None:
         return None
-    return beacons[gate.id].get_measurement(position, yaw_deg)
+    return guidance_provider.get_measurement(position, yaw_deg, target)
 
 
 def _log_onboard_switch(
     logger: RaceLogger,
     time_s: float,
-    switch: OnboardGateUpdate,
+    switch: OnboardNavigationUpdate,
 ) -> None:
     logger.log_event(
         time_s,
@@ -290,6 +309,8 @@ def _log_trajectory(
     position: list[float],
     yaw_deg: float,
     onboard_gate_id: int | None,
+    onboard_phase: str | None,
+    target: GuidanceTarget | None,
     referee_gate_id: int | None,
     measurement: BeaconMeasurement | None,
     command: RoverCommand,
@@ -300,8 +321,14 @@ def _log_trajectory(
         y=f"{position[1]:.4f}",
         z=f"{position[2]:.4f}",
         yaw_deg=f"{yaw_deg:.4f}",
+        onboard_gate_id=_format_optional(onboard_gate_id),
         onboard_active_gate_id=_format_optional(onboard_gate_id),
+        onboard_phase="" if onboard_phase is None else onboard_phase,
         referee_active_gate_id=_format_optional(referee_gate_id),
+        target_name="" if target is None else target.target_name,
+        target_x="" if target is None else f"{target.position[0]:.4f}",
+        target_y="" if target is None else f"{target.position[1]:.4f}",
+        target_z="" if target is None else f"{target.position[2]:.4f}",
         distance_to_gate="" if measurement is None else f"{measurement.distance_m:.4f}",
         bearing_error="" if measurement is None else f"{measurement.bearing_error_deg:.4f}",
         vertical_error="" if measurement is None else f"{measurement.vertical_error_m:.4f}",
@@ -315,7 +342,7 @@ def _log_trajectory(
 def _print_status(
     elapsed_time: float,
     position: list[float],
-    onboard_selector: OnboardGateSelector,
+    onboard_navigator: OnboardCorridorNavigator,
     referee_state: RaceState,
     measurement: BeaconMeasurement | None,
     collision_count: int,
@@ -331,16 +358,18 @@ def _print_status(
         )
 
     print(
-        "t={:.1f}s pos=({:.2f}, {:.2f}, {:.2f}) onboard_gate={} referee_gate={} "
-        "{} onboard_done={}/{} referee_done={}/{} collisions={}".format(
+        "t={:.1f}s pos=({:.2f}, {:.2f}, {:.2f}) onboard_gate={} phase={} "
+        "target={} referee_gate={} {} onboard_done={}/{} referee_done={}/{} collisions={}".format(
             elapsed_time,
             position[0],
             position[1],
             position[2],
-            _format_optional(onboard_selector.active_gate_id),
+            _format_optional(onboard_navigator.active_gate_id),
+            "" if onboard_navigator.is_finished else onboard_navigator.phase,
+            "" if measurement is None else measurement.target_name,
             _format_optional(referee_state.active_gate_id),
             guidance,
-            len(onboard_selector.completed_gate_ids),
+            len(onboard_navigator.completed_gate_ids),
             total_gates,
             len(referee_state.completed_gate_ids),
             total_gates,
