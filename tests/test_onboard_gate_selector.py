@@ -25,7 +25,7 @@ def measurement(gate_id=1, distance_m=0.5, bearing_error_deg=0.0, vertical_error
 
 
 class OnboardGateSelectorTests(unittest.TestCase):
-    def test_advances_only_from_beacon_measurement_conditions(self):
+    def test_close_threshold_alone_marks_reached_without_switching(self):
         selector = OnboardGateSelector(build_track("straight"), consecutive_ticks_required=2)
 
         self.assertFalse(selector.update_from_measurement(measurement(gate_id=2)).switched)
@@ -41,11 +41,12 @@ class OnboardGateSelectorTests(unittest.TestCase):
         self.assertFalse(selector.update_from_measurement(measurement()).switched)
         update = selector.update_from_measurement(measurement())
 
-        self.assertTrue(update.switched)
-        self.assertEqual(update.completed_gate_id, 1)
-        self.assertEqual(update.to_gate_id, 2)
-        self.assertEqual(selector.active_gate_id, 2)
-        self.assertEqual(selector.completed_gate_ids, [1])
+        self.assertFalse(update.switched)
+        self.assertTrue(update.gate_reached)
+        self.assertEqual(update.reached_gate_id, 1)
+        self.assertEqual(selector.active_gate_id, 1)
+        self.assertEqual(selector.completed_gate_ids, [])
+        self.assertTrue(selector.gate_reached)
 
     def test_close_streak_resets_when_conditions_fail(self):
         selector = OnboardGateSelector(build_track("straight"), consecutive_ticks_required=2)
@@ -54,26 +55,38 @@ class OnboardGateSelectorTests(unittest.TestCase):
         self.assertFalse(selector.update_from_measurement(measurement(distance_m=1.2)).switched)
         self.assertFalse(selector.update_from_measurement(measurement()).switched)
         self.assertEqual(selector.active_gate_id, 1)
+        self.assertFalse(selector.gate_reached)
 
-        self.assertTrue(selector.update_from_measurement(measurement()).switched)
-        self.assertEqual(selector.active_gate_id, 2)
+        update = selector.update_from_measurement(measurement())
 
-    def test_optional_range_trend_uses_measurement_history(self):
+        self.assertFalse(update.switched)
+        self.assertTrue(update.gate_reached)
+        self.assertEqual(selector.active_gate_id, 1)
+
+    def test_switches_only_after_range_increases_by_clearance_margin(self):
         selector = OnboardGateSelector(
             build_track("straight"),
-            consecutive_ticks_required=10,
-            enable_range_trend=True,
-            range_trend_ticks_required=2,
-            range_trend_min_delta_m=0.01,
+            consecutive_ticks_required=1,
+            clearance_margin_m=0.4,
         )
 
+        reached = selector.update_from_measurement(measurement(distance_m=0.5))
+        self.assertTrue(reached.gate_reached)
+        self.assertFalse(reached.switched)
+        self.assertEqual(selector.active_gate_id, 1)
+        self.assertEqual(selector.min_distance_after_reached_m, 0.5)
+
+        self.assertFalse(selector.update_from_measurement(measurement(distance_m=0.4)).switched)
+        self.assertEqual(selector.min_distance_after_reached_m, 0.4)
         self.assertFalse(selector.update_from_measurement(measurement(distance_m=0.8)).switched)
-        self.assertFalse(selector.update_from_measurement(measurement(distance_m=0.95)).switched)
-        update = selector.update_from_measurement(measurement(distance_m=1.1))
+        update = selector.update_from_measurement(measurement(distance_m=0.81))
 
         self.assertTrue(update.switched)
-        self.assertEqual(update.reason, "range_increasing_after_close")
+        self.assertEqual(update.reason, "range_increased_after_reach")
+        self.assertEqual(update.completed_gate_id, 1)
+        self.assertEqual(update.to_gate_id, 2)
         self.assertEqual(selector.active_gate_id, 2)
+        self.assertEqual(selector.completed_gate_ids, [1])
 
     def test_selector_module_has_no_referee_or_pose_dependencies(self):
         source = inspect.getsource(selector_module)
@@ -102,11 +115,16 @@ class OnboardGateSelectorTests(unittest.TestCase):
         self.assertEqual(referee_state.active_gate_id, 2)
         self.assertEqual(selector.active_gate_id, 1)
 
-        self.assertTrue(selector.update_from_measurement(measurement()).switched)
+        reached = selector.update_from_measurement(measurement(distance_m=0.5))
+        self.assertEqual(referee_state.active_gate_id, 2)
+        self.assertFalse(reached.switched)
+        self.assertTrue(reached.gate_reached)
+        self.assertEqual(selector.active_gate_id, 1)
+
+        self.assertTrue(selector.update_from_measurement(measurement(distance_m=1.0)).switched)
         self.assertEqual(referee_state.active_gate_id, 2)
         self.assertEqual(selector.active_gate_id, 2)
 
 
 if __name__ == "__main__":
     unittest.main()
-

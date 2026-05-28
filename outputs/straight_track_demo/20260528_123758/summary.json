@@ -1,0 +1,15 @@
+{
+  "collision_count": 0,
+  "elapsed_time": 16.866666666666667,
+  "finish_time": 12.866666666666667,
+  "onboard_completed_gates": 4,
+  "post_finish_duration_s": 4.0,
+  "race_finished_onboard": true,
+  "race_finished_referee": true,
+  "referee_passed_gates": 4,
+  "rover_config_source": "HolooceanLibrary/src/lib/rover.py BlueROV2 schema, adapted to a minimal Pose/Velocity/IMU/Depth/Collision sensor set",
+  "selected_world": "OpenWater",
+  "stopped_after_finish_clearance": true,
+  "total_gates": 4,
+  "track_name": "straight"
+}

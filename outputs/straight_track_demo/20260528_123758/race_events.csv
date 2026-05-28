@@ -1,0 +1,9 @@
+time,event,gate_id,details
+2.767,onboard_switch,1,"to_gate_id=2, reason=close_threshold"
+3.267,referee_gate_passed,1,
+5.900,onboard_switch,2,"to_gate_id=3, reason=close_threshold"
+6.400,referee_gate_passed,2,
+9.033,onboard_switch,3,"to_gate_id=4, reason=close_threshold"
+9.533,referee_gate_passed,3,
+12.167,onboard_switch,4,"to_gate_id=, reason=close_threshold"
+12.867,referee_gate_passed,4,

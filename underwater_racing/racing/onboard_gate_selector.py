@@ -12,6 +12,8 @@ from underwater_racing.racing.track import RaceTrack
 @dataclass(frozen=True)
 class OnboardGateUpdate:
     switched: bool
+    gate_reached: bool = False
+    reached_gate_id: int | None = None
     completed_gate_id: int | None = None
     from_gate_id: int | None = None
     to_gate_id: int | None = None
@@ -23,19 +25,16 @@ class OnboardGateSelector:
     """Internal rover mission state driven only by beacon measurements."""
 
     track: RaceTrack
-    distance_threshold_m: float = 0.9
+    distance_threshold_m: float = 0.8
     bearing_threshold_deg: float = 25.0
     vertical_threshold_m: float = 0.6
     consecutive_ticks_required: int = 3
-    enable_range_trend: bool = False
-    range_trend_ticks_required: int = 3
-    range_trend_min_delta_m: float = 0.05
+    clearance_margin_m: float = 0.4
     active_index: int = 0
     completed_gate_ids: list[int] = field(default_factory=list)
+    gate_reached: bool = False
+    min_distance_after_reached_m: float | None = None
     _close_streak: int = 0
-    _range_increase_streak: int = 0
-    _has_been_close_to_gate: bool = False
-    _previous_distance_m: float | None = None
 
     def __post_init__(self) -> None:
         if self.distance_threshold_m <= 0.0:
@@ -46,10 +45,8 @@ class OnboardGateSelector:
             raise ValueError("vertical_threshold_m must be positive")
         if self.consecutive_ticks_required <= 0:
             raise ValueError("consecutive_ticks_required must be positive")
-        if self.range_trend_ticks_required <= 0:
-            raise ValueError("range_trend_ticks_required must be positive")
-        if self.range_trend_min_delta_m < 0.0:
-            raise ValueError("range_trend_min_delta_m cannot be negative")
+        if self.clearance_margin_m <= 0.0:
+            raise ValueError("clearance_margin_m must be positive")
 
     @property
     def is_finished(self) -> bool:
@@ -79,37 +76,40 @@ class OnboardGateSelector:
             and abs(measurement.vertical_error_m) < self.vertical_threshold_m
         )
 
-        if close_enough:
-            self._close_streak += 1
-            self._has_been_close_to_gate = True
-        else:
-            self._close_streak = 0
-
-        if expected_measurement:
-            self._update_range_trend(measurement.distance_m)
-        else:
+        if not expected_measurement:
             self._reset_measurement_history()
+            return OnboardGateUpdate(switched=False)
 
-        if self._close_streak >= self.consecutive_ticks_required:
-            return self._advance("close_threshold")
+        if not self.gate_reached:
+            if close_enough:
+                self._close_streak += 1
+            else:
+                self._close_streak = 0
 
-        if (
-            self.enable_range_trend
-            and self._has_been_close_to_gate
-            and self._range_increase_streak >= self.range_trend_ticks_required
-        ):
-            return self._advance("range_increasing_after_close")
+            if self._close_streak >= self.consecutive_ticks_required:
+                self.gate_reached = True
+                self.min_distance_after_reached_m = measurement.distance_m
+                return OnboardGateUpdate(
+                    switched=False,
+                    gate_reached=True,
+                    reached_gate_id=gate.id,
+                    reason="close_threshold",
+                )
+
+            return OnboardGateUpdate(switched=False)
+
+        if self.min_distance_after_reached_m is None:
+            self.min_distance_after_reached_m = measurement.distance_m
+        else:
+            self.min_distance_after_reached_m = min(
+                self.min_distance_after_reached_m,
+                measurement.distance_m,
+            )
+
+        if measurement.distance_m > self.min_distance_after_reached_m + self.clearance_margin_m:
+            return self._advance("range_increased_after_reach")
 
         return OnboardGateUpdate(switched=False)
-
-    def _update_range_trend(self, distance_m: float) -> None:
-        if self._previous_distance_m is not None:
-            increased = distance_m > self._previous_distance_m + self.range_trend_min_delta_m
-            if increased and self._has_been_close_to_gate:
-                self._range_increase_streak += 1
-            else:
-                self._range_increase_streak = 0
-        self._previous_distance_m = distance_m
 
     def _advance(self, reason: str) -> OnboardGateUpdate:
         gate = self.active_gate
@@ -132,6 +132,5 @@ class OnboardGateSelector:
 
     def _reset_measurement_history(self) -> None:
         self._close_streak = 0
-        self._range_increase_streak = 0
-        self._has_been_close_to_gate = False
-        self._previous_distance_m = None
+        self.gate_reached = False
+        self.min_distance_after_reached_m = None

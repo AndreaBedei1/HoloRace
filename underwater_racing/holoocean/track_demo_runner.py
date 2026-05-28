@@ -130,6 +130,13 @@ def run_track_demo(config: TrackDemoConfig) -> int:
                 measurement = _measure_onboard_target(onboard_selector, beacons, position, yaw_deg)
                 if measurement is not None:
                     switch = onboard_selector.update_from_measurement(measurement)
+                    if switch.gate_reached:
+                        logger.log_event(
+                            elapsed_time,
+                            "onboard_gate_reached",
+                            switch.reached_gate_id,
+                            f"reason={switch.reason}",
+                        )
                     if switch.switched:
                         _log_onboard_switch(logger, elapsed_time, switch)
                         measurement = _measure_onboard_target(
