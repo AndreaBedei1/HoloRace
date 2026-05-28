@@ -38,8 +38,9 @@ class CrossingResult:
     crossing_point: Optional[List[float]] = None
 
 
-def gate_bar_boxes(gate: "RaceGate") -> List[BoxProp]:
+def gate_bar_boxes(gate: "RaceGate", visual_yaw_deg: float | None = None) -> List[BoxProp]:
     """Return the four boxes that form a square gate frame."""
+    yaw_deg = gate.yaw_deg if visual_yaw_deg is None else visual_yaw_deg
     outer = gate.outer_size_m
     half_opening = gate.opening_size_m / 2.0
     half_thickness = gate.frame_thickness_m / 2.0
@@ -70,12 +71,12 @@ def gate_bar_boxes(gate: "RaceGate") -> List[BoxProp]:
 
     boxes: List[BoxProp] = []
     for name, local_offset, scale in specs:
-        location = add(gate.center, rotate_yaw(local_offset, gate.yaw_deg))
+        location = add(gate.center, rotate_yaw(local_offset, yaw_deg))
         boxes.append(
             BoxProp(
                 name=name,
                 location=location,
-                rotation=[0.0, 0.0, gate.yaw_deg],
+                rotation=[0.0, 0.0, yaw_deg],
                 scale=scale,
                 tag=f"gate_{gate.id}_{name}",
             )

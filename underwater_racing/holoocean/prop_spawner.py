@@ -20,8 +20,14 @@ def spawn_box_prop(env: Any, box: BoxProp, material: str = "steel") -> None:
     )
 
 
-def spawn_gate(env: Any, gate: RaceGate, material: str = "steel") -> List[BoxProp]:
-    boxes = gate_bar_boxes(gate)
+def spawn_gate(
+    env: Any,
+    gate: RaceGate,
+    material: str = "steel",
+    rotate_visual_boxes: bool = True,
+) -> List[BoxProp]:
+    visual_yaw = gate.yaw_deg if rotate_visual_boxes else 0.0
+    boxes = gate_bar_boxes(gate, visual_yaw_deg=visual_yaw)
     for box in boxes:
         spawn_box_prop(env, box, material=material)
     return boxes

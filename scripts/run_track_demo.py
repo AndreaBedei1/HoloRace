@@ -37,6 +37,17 @@ def parse_args() -> argparse.Namespace:
         default=TICKS_PER_SEC,
         help="HoloOcean simulation ticks per second.",
     )
+    parser.add_argument(
+        "--post-finish-duration",
+        type=float,
+        default=4.0,
+        help="Seconds to keep moving after onboard and referee finish.",
+    )
+    parser.add_argument(
+        "--axis-aligned-visual-gates",
+        action="store_true",
+        help="Spawn gate frames without yaw rotation while keeping referee yaw unchanged.",
+    )
     return parser.parse_args()
 
 
@@ -49,6 +60,8 @@ def main() -> int:
             headless=args.headless,
             max_duration_s=args.max_duration,
             ticks_per_sec=args.ticks_per_sec,
+            post_finish_duration_s=args.post_finish_duration,
+            axis_aligned_visual_gates=args.axis_aligned_visual_gates,
         )
     )
 

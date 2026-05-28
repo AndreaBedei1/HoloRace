@@ -33,6 +33,12 @@ def parse_args() -> argparse.Namespace:
         default=TICKS_PER_SEC,
         help="HoloOcean simulation ticks per second.",
     )
+    parser.add_argument(
+        "--post-finish-duration",
+        type=float,
+        default=4.0,
+        help="Seconds to keep moving after onboard and referee finish.",
+    )
     return parser.parse_args()
 
 
@@ -46,6 +52,7 @@ def main() -> int:
             max_duration_s=args.max_duration,
             ticks_per_sec=args.ticks_per_sec,
             output_root="outputs/single_gate_demo",
+            post_finish_duration_s=args.post_finish_duration,
         )
     )
 

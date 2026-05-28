@@ -48,6 +48,8 @@ Useful options:
 python scripts/run_track_demo.py --track straight --world OpenWater
 python scripts/run_track_demo.py --track zigzag --max-duration 60
 python scripts/run_track_demo.py --track single --ticks-per-sec 30
+python scripts/run_track_demo.py --track zigzag --post-finish-duration 4
+python scripts/run_track_demo.py --track zigzag --axis-aligned-visual-gates
 ```
 
 The generic script writes:
@@ -87,7 +89,7 @@ Each gate owns one `VirtualGateBeacon` with `beacon_id == gate.id`. The marker p
 gate.center + [0, 0, opening_size / 2 + frame_thickness + beacon_clearance]
 ```
 
-The beacon does not target its own physical marker position. Its measurement targets `gate.center`, the center of the empty opening. The measurement includes distance, world direction, yaw/bearing error, vertical error, elevation error, active gate id, and beacon id. This keeps the interface replaceable by real `AcousticBeaconSensor` messages later.
+The beacon does not target its own physical marker position. Its measurement targets a configurable navigation point inside the gate opening. By default this point is `0.25 m` below `gate.center` so the simple controller aims slightly lower through the opening. The measurement includes distance, world direction, yaw/bearing error, vertical error, elevation error, active gate id, and beacon id. This keeps the interface replaceable by real `AcousticBeaconSensor` messages later.
 
 The virtual beacon is a sensor emulator for the demo. The rover's onboard mission state sees only `BeaconMeasurement` values, so a real acoustic beacon measurement source can replace it later without changing the gate selector.
 
@@ -104,7 +106,9 @@ The logs include both concepts:
 
 - `trajectory.csv`: position, onboard active gate, referee active gate, beacon guidance errors, and abstract command values
 - `race_events.csv`: `onboard_switch`, `referee_gate_passed`, `referee_gate_missed`, and `collision` events
-- `summary.json`: selected track/world, onboard completion, referee completion, passed gate counts, elapsed time, and collisions
+- `summary.json`: selected track/world, onboard completion, referee completion, passed gate counts, finish time, post-finish clearance, elapsed time, and collisions
+
+For the first stable zigzag demo, visual gate boxes are spawned axis-aligned by default so each frame remains compact in HoloOcean. The referee still uses each gate's configured `yaw_deg` for crossing geometry.
 
 ## Existing Rover Compatibility
 

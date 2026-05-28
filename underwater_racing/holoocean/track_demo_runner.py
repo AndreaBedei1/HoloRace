@@ -25,6 +25,8 @@ from underwater_racing.racing.beacon import BeaconMeasurement, VirtualGateBeacon
 from underwater_racing.racing.onboard_gate_selector import OnboardGateSelector, OnboardGateUpdate
 from underwater_racing.racing.race_state import RaceState
 
+POST_FINISH_SURGE = 0.25
+
 
 @dataclass(frozen=True)
 class TrackDemoConfig:
@@ -34,9 +36,14 @@ class TrackDemoConfig:
     max_duration_s: float = MAX_DEMO_DURATION_S
     ticks_per_sec: int = TICKS_PER_SEC
     output_root: str | Path | None = None
+    post_finish_duration_s: float = 4.0
+    axis_aligned_visual_gates: bool = False
 
 
 def run_track_demo(config: TrackDemoConfig) -> int:
+    if config.post_finish_duration_s < 0.0:
+        raise ValueError("post_finish_duration_s cannot be negative")
+
     try:
         import holoocean
     except ImportError:
@@ -66,12 +73,17 @@ def run_track_demo(config: TrackDemoConfig) -> int:
 
     collision_count = 0
     elapsed_time = 0.0
+    finish_time_s = None
+    stopped_after_finish_clearance = False
+    rotate_visual_boxes = _should_rotate_visual_boxes(config)
 
     with RaceLogger(root=output_root) as logger:
         print(f"Output directory: {logger.output_dir}")
         print(f"Selected world: {selected_world}")
         print(f"Track: {config.track_name} ({len(track.gates)} gates)")
         print(f"Rover config source: {ROVER_CONFIG_SOURCE}")
+        if not rotate_visual_boxes:
+            print("Visual gate boxes are spawned axis-aligned for compact frames.")
 
         with holoocean.make(
             scenario_cfg=scenario_cfg,
@@ -81,7 +93,7 @@ def run_track_demo(config: TrackDemoConfig) -> int:
             start_world=True,
         ) as env:
             for gate in track.gates:
-                spawn_gate(env, gate)
+                spawn_gate(env, gate, rotate_visual_boxes=rotate_visual_boxes)
                 spawn_beacon_marker(env, gate)
 
             referee_gate = referee_state.active_gate
@@ -127,7 +139,16 @@ def run_track_demo(config: TrackDemoConfig) -> int:
                             yaw_deg,
                         )
 
-                if measurement is None:
+                if onboard_selector.is_finished and referee_state.is_finished and finish_time_s is None:
+                    finish_time_s = elapsed_time
+
+                if finish_time_s is not None:
+                    command = RoverCommand(surge=POST_FINISH_SURGE)
+                    action = adapter.to_action(command)
+                elif measurement is None and onboard_selector.is_finished:
+                    command = RoverCommand(surge=POST_FINISH_SURGE)
+                    action = adapter.to_action(command)
+                elif measurement is None:
                     command = RoverCommand()
                     action = adapter.zero_action()
                 else:
@@ -165,7 +186,11 @@ def run_track_demo(config: TrackDemoConfig) -> int:
                     )
                     next_print_time += 1.0
 
-                if onboard_selector.is_finished and referee_state.is_finished:
+                if (
+                    finish_time_s is not None
+                    and elapsed_time - finish_time_s >= config.post_finish_duration_s
+                ):
+                    stopped_after_finish_clearance = True
                     break
 
         summary = {
@@ -175,6 +200,9 @@ def run_track_demo(config: TrackDemoConfig) -> int:
             "referee_passed_gates": len(referee_state.completed_gate_ids),
             "race_finished_onboard": onboard_selector.is_finished,
             "race_finished_referee": referee_state.is_finished,
+            "finish_time": finish_time_s,
+            "post_finish_duration_s": config.post_finish_duration_s,
+            "stopped_after_finish_clearance": stopped_after_finish_clearance,
             "elapsed_time": elapsed_time,
             "collision_count": collision_count,
             "selected_world": selected_world,
@@ -184,6 +212,12 @@ def run_track_demo(config: TrackDemoConfig) -> int:
         print(f"Summary written to: {logger.output_dir / 'summary.json'}")
 
     return 0
+
+
+def _should_rotate_visual_boxes(config: TrackDemoConfig) -> bool:
+    if config.axis_aligned_visual_gates:
+        return False
+    return config.track_name.lower() != "zigzag"
 
 
 def _update_referee(

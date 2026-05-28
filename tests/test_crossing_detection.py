@@ -30,6 +30,24 @@ class CrossingDetectionTests(unittest.TestCase):
         self.assertTrue(result.crossed)
         self.assertFalse(result.inside_opening)
 
+    def test_navigation_target_offset_does_not_change_referee_geometry(self):
+        self.assertEqual(self.gate.center, [0.0, 0.0, -5.0])
+        self.assertEqual(self.gate.target_position, [0.0, 0.0, -5.25])
+
+        inside_result = detect_gate_crossing(
+            self.gate,
+            previous_position=[-1.0, 0.0, -5.74],
+            current_position=[1.0, 0.0, -5.74],
+        )
+        outside_result = detect_gate_crossing(
+            self.gate,
+            previous_position=[-1.0, 0.0, -5.76],
+            current_position=[1.0, 0.0, -5.76],
+        )
+
+        self.assertTrue(inside_result.inside_opening)
+        self.assertFalse(outside_result.inside_opening)
+
     def test_wrong_direction_is_not_a_correct_crossing(self):
         result = detect_gate_crossing(
             self.gate,
