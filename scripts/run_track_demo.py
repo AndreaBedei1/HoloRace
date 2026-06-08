@@ -53,6 +53,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Invert yaw thruster contribution for testing BlueROV yaw sign.",
     )
+    parser.add_argument(
+        "--enable-vision",
+        action="store_true",
+        help="Enable optional front RGB camera visual servoing near gates.",
+    )
     return parser.parse_args()
 
 
@@ -68,6 +73,7 @@ def main() -> int:
             post_finish_duration_s=args.post_finish_duration,
             axis_aligned_visual_gates=args.axis_aligned_visual_gates,
             yaw_sign=-1.0 if args.invert_yaw else 1.0,
+            enable_vision=args.enable_vision,
         )
     )
 

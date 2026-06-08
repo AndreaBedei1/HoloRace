@@ -27,10 +27,17 @@ class RaceLogger:
         "distance_to_gate",
         "bearing_error",
         "vertical_error",
+        "command_source",
         "command_surge",
         "command_sway",
         "command_heave",
         "command_yaw",
+        "vision_found",
+        "vision_confidence",
+        "vision_x_error",
+        "vision_y_error",
+        "vision_area",
+        "vision_angle",
     ]
 
     event_fields = ["time", "event", "gate_id", "details"]

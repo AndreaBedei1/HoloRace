@@ -38,18 +38,19 @@ class ControlAndVehicleTests(unittest.TestCase):
         self.assertAlmostEqual(command.surge, 0.15)
         self.assertGreater(command.yaw, 0.0)
 
-    def test_no_minimum_turning_surge_when_target_is_behind(self):
+    def test_target_behind_uses_small_reverse_instead_of_spinning_in_place(self):
         follower = SimpleGateFollower(min_turning_surge=0.15)
         command = follower.compute_command(measurement(distance_m=0.5, bearing_error_deg=120.0))
 
-        self.assertAlmostEqual(command.surge, 0.0)
+        self.assertLess(command.surge, 0.0)
+        self.assertGreaterEqual(command.surge, -follower.max_reverse)
 
     def test_yaw_command_is_rate_limited_and_less_aggressive(self):
         follower = SimpleGateFollower()
         command = follower.compute_command(measurement(distance_m=2.0, bearing_error_deg=90.0))
 
         self.assertAlmostEqual(command.yaw, follower.max_yaw_delta_per_step)
-        self.assertLess(command.yaw, 0.35)
+        self.assertLess(command.yaw, 0.25)
 
     def test_yaw_is_suppressed_near_target(self):
         follower = SimpleGateFollower()

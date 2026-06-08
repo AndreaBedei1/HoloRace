@@ -18,8 +18,16 @@ from underwater_racing.control.simple_gate_follower import RoverCommand, SimpleG
 from underwater_racing.geometry.gate_geometry import CrossingDetector, CrossingResult
 from underwater_racing.holoocean.prop_spawner import spawn_beacon_marker, spawn_gate
 from underwater_racing.holoocean.scenario_builder import build_scenario, choose_world
-from underwater_racing.holoocean.state_parsing import has_collision, parse_vehicle_pose
-from underwater_racing.holoocean.vehicle_loader import BlueROVThrusterAdapter, build_bluerov_config
+from underwater_racing.holoocean.state_parsing import (
+    get_sensor_value,
+    has_collision,
+    parse_vehicle_pose,
+)
+from underwater_racing.holoocean.vehicle_loader import (
+    FRONT_RGB_CAMERA_NAME,
+    BlueROVThrusterAdapter,
+    build_bluerov_config,
+)
 from underwater_racing.logging_utils.race_logger import RaceLogger
 from underwater_racing.racing.beacon import BeaconMeasurement, GuidanceTarget, VirtualGuidanceProvider
 from underwater_racing.racing.onboard_corridor_navigator import (
@@ -27,6 +35,8 @@ from underwater_racing.racing.onboard_corridor_navigator import (
     OnboardNavigationUpdate,
 )
 from underwater_racing.racing.race_state import RaceState
+from underwater_racing.vision.gate_detection import GateDetection
+from underwater_racing.vision.vision_guidance import BEACON_SOURCE, VisionGuidance
 
 POST_FINISH_SURGE = 0.25
 
@@ -42,6 +52,7 @@ class TrackDemoConfig:
     post_finish_duration_s: float = 4.0
     axis_aligned_visual_gates: bool = False
     yaw_sign: float = 1.0
+    enable_vision: bool = False
 
 
 def run_track_demo(config: TrackDemoConfig) -> int:
@@ -61,7 +72,12 @@ def run_track_demo(config: TrackDemoConfig) -> int:
     referee_state = RaceState(track)
     onboard_navigator = OnboardCorridorNavigator(track)
     selected_world = choose_world(config.world)
-    vehicle_config = build_bluerov_config()
+    camera_hz = max(1, min(config.ticks_per_sec, 15))
+    vehicle_config = build_bluerov_config(
+        sensor_hz=config.ticks_per_sec,
+        enable_front_rgb_camera=config.enable_vision,
+        camera_hz=camera_hz,
+    )
     scenario_cfg = build_scenario(
         vehicle_config=vehicle_config,
         world=selected_world,
@@ -73,6 +89,7 @@ def run_track_demo(config: TrackDemoConfig) -> int:
     controller = SimpleGateFollower()
     adapter = BlueROVThrusterAdapter(yaw_sign=config.yaw_sign)
     guidance_provider = VirtualGuidanceProvider()
+    vision_guidance = VisionGuidance() if config.enable_vision else None
     output_root = config.output_root or f"outputs/{config.track_name}_track_demo"
 
     collision_count = 0
@@ -86,6 +103,8 @@ def run_track_demo(config: TrackDemoConfig) -> int:
         print(f"Selected world: {selected_world}")
         print(f"Track: {config.track_name} ({len(track.gates)} gates)")
         print(f"Rover config source: {ROVER_CONFIG_SOURCE}")
+        if config.enable_vision:
+            print(f"Vision guidance enabled: {FRONT_RGB_CAMERA_NAME} at {camera_hz} Hz")
         if not rotate_visual_boxes:
             print("Visual gate boxes are spawned axis-aligned for compact frames.")
 
@@ -117,6 +136,8 @@ def run_track_demo(config: TrackDemoConfig) -> int:
             for step in range(max_steps):
                 elapsed_time = step / float(config.ticks_per_sec)
                 state = env.step(action)
+                detection = GateDetection()
+                command_source = BEACON_SOURCE
 
                 pose = parse_vehicle_pose(state, agent_name=ROVER_NAME)
                 if pose is not None:
@@ -133,7 +154,7 @@ def run_track_demo(config: TrackDemoConfig) -> int:
 
                 target = onboard_navigator.active_target
                 measurement = _measure_onboard_target(
-                    onboard_navigator,
+                    target,
                     guidance_provider,
                     position,
                     yaw_deg,
@@ -155,7 +176,7 @@ def run_track_demo(config: TrackDemoConfig) -> int:
                     if update.phase_changed or update.switched:
                         target = onboard_navigator.active_target
                         measurement = _measure_onboard_target(
-                            onboard_navigator,
+                            target,
                             guidance_provider,
                             position,
                             yaw_deg,
@@ -174,10 +195,28 @@ def run_track_demo(config: TrackDemoConfig) -> int:
                     command = RoverCommand()
                     action = adapter.zero_action()
                 else:
-                    command = controller.compute_command(
+                    beacon_command = controller.compute_command(
                         measurement,
                         keep_forward_near_target=onboard_navigator.keep_forward_near_target,
                     )
+                    command = beacon_command
+                    if vision_guidance is not None:
+                        gate_distance_m = _measure_active_gate_distance(
+                            onboard_navigator,
+                            guidance_provider,
+                            position,
+                            yaw_deg,
+                        )
+                        guidance = vision_guidance.compute_command(
+                            distance_to_gate_m=gate_distance_m
+                            if gate_distance_m is not None
+                            else measurement.distance_m,
+                            beacon_command=beacon_command,
+                            frame=_front_rgb_frame(state),
+                        )
+                        command = guidance.command
+                        command_source = guidance.command_source
+                        detection = guidance.detection
                     action = adapter.to_action(command)
 
                 if has_collision(state, agent_name=ROVER_NAME):
@@ -200,6 +239,8 @@ def run_track_demo(config: TrackDemoConfig) -> int:
                     referee_gate_id=referee_state.active_gate_id,
                     measurement=measurement,
                     command=command,
+                    command_source=command_source,
+                    detection=detection,
                 )
 
                 if elapsed_time >= next_print_time:
@@ -235,6 +276,7 @@ def run_track_demo(config: TrackDemoConfig) -> int:
             "collision_count": collision_count,
             "selected_world": selected_world,
             "yaw_sign": config.yaw_sign,
+            "vision_enabled": config.enable_vision,
             "rover_config_source": ROVER_CONFIG_SOURCE,
         }
         logger.write_summary(summary)
@@ -279,15 +321,41 @@ def _update_referee(
 
 
 def _measure_onboard_target(
-    onboard_navigator: OnboardCorridorNavigator,
+    target: GuidanceTarget | None,
     guidance_provider: VirtualGuidanceProvider,
     position: list[float],
     yaw_deg: float,
 ) -> BeaconMeasurement | None:
-    target = onboard_navigator.active_target
     if target is None:
         return None
     return guidance_provider.get_measurement(position, yaw_deg, target)
+
+
+def _measure_active_gate_distance(
+    onboard_navigator: OnboardCorridorNavigator,
+    guidance_provider: VirtualGuidanceProvider,
+    position: list[float],
+    yaw_deg: float,
+) -> float | None:
+    gate = onboard_navigator.active_gate
+    if gate is None:
+        return None
+
+    gate_target = GuidanceTarget(
+        gate_id=gate.id,
+        target_name="gate_opening",
+        position=gate.target_position,
+        beacon_id=gate.beacon_id,
+        beacon_position=gate.beacon_position,
+    )
+    return guidance_provider.get_measurement(position, yaw_deg, gate_target).distance_m
+
+
+def _front_rgb_frame(state: dict) -> object | None:
+    frame = get_sensor_value(state, FRONT_RGB_CAMERA_NAME, agent_name=ROVER_NAME)
+    if frame is not None:
+        return frame
+    return get_sensor_value(state, "RGBCamera", agent_name=ROVER_NAME)
 
 
 def _log_onboard_switch(
@@ -314,6 +382,8 @@ def _log_trajectory(
     referee_gate_id: int | None,
     measurement: BeaconMeasurement | None,
     command: RoverCommand,
+    command_source: str,
+    detection: GateDetection,
 ) -> None:
     logger.log_trajectory(
         time=f"{time_s:.3f}",
@@ -332,10 +402,17 @@ def _log_trajectory(
         distance_to_gate="" if measurement is None else f"{measurement.distance_m:.4f}",
         bearing_error="" if measurement is None else f"{measurement.bearing_error_deg:.4f}",
         vertical_error="" if measurement is None else f"{measurement.vertical_error_m:.4f}",
+        command_source=command_source,
         command_surge=f"{command.surge:.4f}",
         command_sway=f"{command.sway:.4f}",
         command_heave=f"{command.heave:.4f}",
         command_yaw=f"{command.yaw:.4f}",
+        vision_found=str(detection.found).lower(),
+        vision_confidence=f"{detection.confidence:.4f}",
+        vision_x_error=f"{detection.normalized_x_error:.4f}",
+        vision_y_error=f"{detection.normalized_y_error:.4f}",
+        vision_area=f"{detection.area_fraction:.4f}",
+        vision_angle=f"{detection.angle_deg:.4f}",
     )
 
 

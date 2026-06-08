@@ -23,15 +23,18 @@ class RoverCommand:
 @dataclass
 class SimpleGateFollower:
     max_surge: float = 1.0
+    max_reverse: float = 0.35
+    max_sway: float = 0.55
     max_heave: float = 0.7
-    max_yaw: float = 0.35
+    max_yaw: float = 0.25
     surge_gain: float = 0.35
+    sway_gain: float = 0.45
     heave_gain: float = 0.45
-    yaw_gain: float = 0.45
+    yaw_gain: float = 0.25
     slow_radius_m: float = 0.8
     min_turning_surge: float = 0.20
     yaw_deadband_deg: float = 5.0
-    max_yaw_delta_per_step: float = 0.05
+    max_yaw_delta_per_step: float = 0.03
     near_target_radius_m: float = 0.45
     _previous_yaw_command: float = field(default=0.0, init=False, repr=False)
 
@@ -40,11 +43,14 @@ class SimpleGateFollower:
         measurement: BeaconMeasurement,
         keep_forward_near_target: bool = False,
     ) -> RoverCommand:
-        alignment = max(0.0, math.cos(measurement.bearing_error_rad))
-        surge = self.surge_gain * measurement.distance_m * alignment
+        forward_component = math.cos(measurement.bearing_error_rad)
+        lateral_component = math.sin(measurement.bearing_error_rad)
+        surge = self.surge_gain * measurement.distance_m * forward_component
+        sway = self.sway_gain * measurement.distance_m * lateral_component
         if measurement.distance_m < self.slow_radius_m:
             surge *= measurement.distance_m / self.slow_radius_m
-        if abs(measurement.bearing_error_deg) < 90.0 and surge < self.min_turning_surge:
+            sway *= measurement.distance_m / self.slow_radius_m
+        if 0.0 <= surge < self.min_turning_surge and abs(measurement.bearing_error_deg) < 90.0:
             surge = self.min_turning_surge
 
         yaw = self._compute_yaw(measurement)
@@ -53,8 +59,8 @@ class SimpleGateFollower:
         heave = self.heave_gain * measurement.vertical_error_m
 
         return RoverCommand(
-            surge=_clamp(surge, 0.0, self.max_surge),
-            sway=0.0,
+            surge=_clamp(surge, -self.max_reverse, self.max_surge),
+            sway=_clamp(sway, -self.max_sway, self.max_sway),
             heave=_clamp(heave, -self.max_heave, self.max_heave),
             yaw=_clamp(yaw, -self.max_yaw, self.max_yaw),
         )

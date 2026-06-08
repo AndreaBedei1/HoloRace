@@ -1,6 +1,5 @@
 """Zigzag multi-gate track definition."""
 
-from underwater_racing.config.tracks.path_yaw import yaws_for_path
 from underwater_racing.racing.gate import RaceGate
 from underwater_racing.racing.track import RaceTrack
 
@@ -15,7 +14,7 @@ def build_track() -> RaceTrack:
     ]
     return RaceTrack.from_gates(
         [
-            RaceGate(id=index + 1, center=center, yaw_deg=yaw, beacon_id=index + 1)
-            for index, (center, yaw) in enumerate(zip(centers, yaws_for_path(centers)))
+            RaceGate(id=index + 1, center=center, yaw_deg=0.0, beacon_id=index + 1)
+            for index, center in enumerate(centers)
         ]
     )

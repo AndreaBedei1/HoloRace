@@ -14,8 +14,19 @@ from underwater_racing.config.default_vehicle import (
 )
 from underwater_racing.control.simple_gate_follower import RoverCommand
 
+FRONT_RGB_CAMERA_NAME = "FrontRGBCamera"
+FRONT_RGB_CAMERA_SOCKET = "CameraSocket"
+FRONT_RGB_CAMERA_WIDTH = 320
+FRONT_RGB_CAMERA_HEIGHT = 240
 
-def _sensor(sensor_type: str, socket: str, hz: int, sensor_name: str | None = None) -> Dict[str, Any]:
+
+def _sensor(
+    sensor_type: str,
+    socket: str,
+    hz: int,
+    sensor_name: str | None = None,
+    configuration: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
     cfg: Dict[str, Any] = {
         "sensor_type": sensor_type,
         "socket": socket,
@@ -23,18 +34,45 @@ def _sensor(sensor_type: str, socket: str, hz: int, sensor_name: str | None = No
     }
     if sensor_name:
         cfg["sensor_name"] = sensor_name
+    if configuration is not None:
+        cfg["configuration"] = configuration
     return cfg
 
 
-def minimal_bluerov_sensors(hz: int = 30) -> List[Dict[str, Any]]:
+def front_rgb_camera_sensor(
+    hz: int = 15,
+    width: int = FRONT_RGB_CAMERA_WIDTH,
+    height: int = FRONT_RGB_CAMERA_HEIGHT,
+) -> Dict[str, Any]:
+    """Return a forward RGB camera sensor config for optional visual servoing."""
+    return _sensor(
+        "RGBCamera",
+        FRONT_RGB_CAMERA_SOCKET,
+        hz,
+        sensor_name=FRONT_RGB_CAMERA_NAME,
+        configuration={
+            "CaptureWidth": int(width),
+            "CaptureHeight": int(height),
+        },
+    )
+
+
+def minimal_bluerov_sensors(
+    hz: int = 30,
+    include_front_rgb_camera: bool = False,
+    camera_hz: int | None = None,
+) -> List[Dict[str, Any]]:
     """Return only the sensors needed by the racing demo."""
-    return [
+    sensors = [
         _sensor("PoseSensor", "PoseSocket", hz),
         _sensor("VelocitySensor", "VelocitySocket", hz),
         _sensor("IMUSensor", "IMUSocket", hz),
         _sensor("DepthSensor", "DepthSocket", hz),
         _sensor("CollisionSensor", "CollisionSocket", hz),
     ]
+    if include_front_rgb_camera:
+        sensors.append(front_rgb_camera_sensor(hz=camera_hz or min(hz, 15)))
+    return sensors
 
 
 def build_bluerov_config(
@@ -43,6 +81,9 @@ def build_bluerov_config(
     rotation: Iterable[float] = ROVER_START_ROTATION,
     control_scheme: int = ROVER_CONTROL_SCHEME,
     sensors: List[Dict[str, Any]] | None = None,
+    sensor_hz: int = 30,
+    enable_front_rgb_camera: bool = False,
+    camera_hz: int | None = None,
 ) -> Dict[str, Any]:
     """Build a minimal config matching the existing HolooceanLibrary BlueROV2 schema."""
     return {
@@ -51,7 +92,13 @@ def build_bluerov_config(
         "control_scheme": control_scheme,
         "location": [float(v) for v in location],
         "rotation": [float(v) for v in rotation],
-        "sensors": sensors if sensors is not None else minimal_bluerov_sensors(),
+        "sensors": sensors
+        if sensors is not None
+        else minimal_bluerov_sensors(
+            hz=sensor_hz,
+            include_front_rgb_camera=enable_front_rgb_camera,
+            camera_hz=camera_hz,
+        ),
     }
 
 

@@ -1,7 +1,6 @@
 import unittest
 
 from underwater_racing.config.track_registry import available_tracks, build_track
-from underwater_racing.config.tracks.path_yaw import yaws_for_path
 
 
 class TrackConfigTests(unittest.TestCase):
@@ -54,10 +53,7 @@ class TrackConfigTests(unittest.TestCase):
             [18.0, 2.0, -5.0],
             [24.0, 0.0, -5.0],
         ])
-        self.assertEqual(
-            [gate.yaw_deg for gate in track.gates],
-            yaws_for_path([gate.center for gate in track.gates]),
-        )
+        self.assertEqual([gate.yaw_deg for gate in track.gates], [0.0, 0.0, 0.0, 0.0, 0.0])
 
     def test_zigzag_smooth_track_layout(self):
         track = build_track("zigzag_smooth")
@@ -68,10 +64,7 @@ class TrackConfigTests(unittest.TestCase):
             [24.0, 1.5, -5.0],
             [32.0, 0.0, -5.0],
         ])
-        self.assertEqual(
-            [gate.yaw_deg for gate in track.gates],
-            yaws_for_path([gate.center for gate in track.gates]),
-        )
+        self.assertEqual([gate.yaw_deg for gate in track.gates], [0.0, 0.0, 0.0, 0.0, 0.0])
 
 
 if __name__ == "__main__":
