@@ -10,18 +10,19 @@ from underwater_racing.vision.gate_detection import GateDetection
 
 @dataclass
 class VisualGateServo:
-    max_surge: float = 0.45
-    alignment_surge: float = 0.16
-    close_alignment_surge: float = 0.08
-    max_sway: float = 0.28
-    max_heave: float = 0.35
-    max_yaw: float = 0.10
-    sway_gain: float = 0.28
-    heave_gain: float = 0.35
-    yaw_gain: float = 0.09
+    max_surge: float = 0.55
+    alignment_surge: float = 0.10
+    close_alignment_surge: float = 0.04
+    max_sway: float = 0.36
+    max_heave: float = 0.38
+    max_yaw: float = 0.08
+    sway_gain: float = 0.38
+    heave_gain: float = 0.38
+    yaw_gain: float = 0.05
     x_deadband: float = 0.06
     y_deadband: float = 0.06
-    centered_tolerance: float = 0.12
+    centered_tolerance: float = 0.10
+    angle_tolerance_deg: float = 12.0
     close_area_fraction: float = 0.25
     min_confidence: float = 0.35
 
@@ -34,6 +35,7 @@ class VisualGateServo:
         centered = (
             abs(x_error) <= self.centered_tolerance
             and abs(y_error) <= self.centered_tolerance
+            and abs(detection.angle_deg) <= self.angle_tolerance_deg
         )
 
         sway = 0.0 if abs(x_error) < self.x_deadband else self.sway_gain * x_error

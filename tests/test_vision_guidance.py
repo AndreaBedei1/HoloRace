@@ -123,7 +123,45 @@ class VisionGuidanceFusionTests(unittest.TestCase):
         )
 
         self.assertEqual(result.command_source, FALLBACK_BEACON_SOURCE)
-        self.assertEqual(result.command, beacon)
+        self.assertGreater(result.command.surge, 0.0)
+        self.assertLess(result.command.surge, beacon.surge)
+        self.assertEqual(result.command.yaw, beacon.yaw)
+
+    def test_near_fallback_caps_aggressive_beacon_corrections(self):
+        guidance = VisionGuidance()
+        beacon = RoverCommand(surge=1.0, sway=0.55, heave=0.4, yaw=0.25)
+
+        result = guidance.fuse_detection(
+            distance_to_gate_m=2.5,
+            beacon_command=beacon,
+            detection=GateDetection(found=False),
+        )
+
+        self.assertEqual(result.command_source, FALLBACK_BEACON_SOURCE)
+        self.assertLess(result.command.surge, 0.25)
+        self.assertLessEqual(abs(result.command.sway), guidance.fallback_max_sway)
+        self.assertLessEqual(abs(result.command.heave), guidance.fallback_max_heave)
+        self.assertLessEqual(abs(result.command.yaw), guidance.fallback_max_yaw)
+
+    def test_missing_frame_reuses_recent_valid_detection_briefly(self):
+        guidance = VisionGuidance()
+        beacon = RoverCommand(surge=0.8, yaw=-0.1)
+        first = guidance.fuse_detection(
+            distance_to_gate_m=3.0,
+            beacon_command=beacon,
+            detection=valid_detection(x_error=0.4, y_error=0.0),
+            time_s=10.0,
+        )
+        held = guidance.fuse_detection(
+            distance_to_gate_m=3.0,
+            beacon_command=beacon,
+            detection=GateDetection(found=False),
+            time_s=10.1,
+        )
+
+        self.assertEqual(first.command_source, VISION_SOURCE)
+        self.assertEqual(held.command_source, VISION_SOURCE)
+        self.assertEqual(held.detection, first.detection)
 
 
 class VisionCameraConfigTests(unittest.TestCase):

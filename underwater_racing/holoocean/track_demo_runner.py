@@ -213,6 +213,7 @@ def run_track_demo(config: TrackDemoConfig) -> int:
                             else measurement.distance_m,
                             beacon_command=beacon_command,
                             frame=_front_rgb_frame(state),
+                            time_s=elapsed_time,
                         )
                         command = guidance.command
                         command_source = guidance.command_source
